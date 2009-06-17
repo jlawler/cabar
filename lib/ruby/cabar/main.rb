@@ -1,5 +1,7 @@
 require 'cabar/base'
 
+require 'cabar/configuration'
+require 'cabar/loader'
 require 'cabar/resolver'
 require 'cabar/plugin'
 require 'cabar/command/manager'
@@ -17,6 +19,9 @@ module Cabar
     # Raw command line arguments from bin/cbr.
     attr_accessor :args
 
+    # The global Cabar::Configuration object.
+    attr_accessor :configuration
+
     # The Cabar::Command::Manager for top-level commands.
     attr_accessor :commands
 
@@ -30,14 +35,18 @@ module Cabar
     # The Cabar::Logger object.
     attr_accessor :_logger
 
+
+    # Returns the global Main instance.
     def self.current
       @@current || raise(Error, "Cabar::Main not initialized")
     end
+
 
     def initialize *args
       @commands = Command::Manager.factory.
         new(:main => self, 
             :owner => self)
+
       @_logger = Logger.factory.
         new(:name => 'cabar')
 
@@ -46,16 +55,54 @@ module Cabar
       @@current = self
     end
 
+
+    ###########################################################
+    # Configuration
+    #
+
+    # Returns the cached Cabar::Configuration object.
+    def configuration
+      @configuration ||= 
+        Cabar::Configuration.new
+    end
+
+
+    ###########################################################
+    # Loader
+    #
+
+    # Returns the component loader.
+    def loader
+      @loader ||= 
+        begin
+          @loader = Cabar::Loader.factory.
+            new(:main => self,
+                :configuration => configuration)
+
+          # Prime the component search path queue.
+          @loader.add_component_search_path!(configuration.component_search_path)
+          
+          @loader
+        end
+    end
+
+
+    ###########################################################
+    # Plugin
+    #
+
+    # Returns the cached Cabar::Plugin::Manager object.
     def plugin_manager
       @plugin_manager ||=
         Plugin::Manager.factory.new(:main => self)
     end
 
+
     ##################################################################
     # Command runner
     #
 
-    # The Cabar::Command::Runner that handles parsing arguments
+    # The cached Cabar::Command::Runner that handles parsing arguments
     # and running the selected command.
     def command_runner
       @command_runner ||= 
@@ -69,10 +116,12 @@ module Cabar
         end
     end
 
+
     # Interface for bin/cbr.
     def parse_args args = self.args
       command_runner.parse_args(args)
     end
+
 
     # Interface for bin/cbr.
     def run
@@ -83,17 +132,16 @@ module Cabar
       notify_observers :after_run
     end
 
+
     ##################################################################
+    # Main Resolver
+    #
 
     # Return the Cabar::Resolver object.
     def resolver
       @resolver ||=
       begin
-        @resolver =
-          Resolver.factory.
-          new(:main => self,
-              :directory => File.expand_path('.')).
-          make_current!
+        @resolver = new_resolver
 
         # Force loading of cabar itself early.
         @resolver.load_component!(Cabar.cabar_base_directory, 
@@ -105,7 +153,18 @@ module Cabar
     end
 
 
+    # Returns a new Resolver.
+    def new_resolver opts = { }
+      opts[:main] ||= self
+      opts[:configuration] ||= configuration
+      opts[:directory] ||= File.expand_path('.')
+      Resolver.factory.new(opts)
+    end
+
+
+
     ##################################################################
+
 
     def inspect
       to_s

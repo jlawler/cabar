@@ -15,10 +15,12 @@ module Cabar
         super
       end
 
+
       # Calls Cabar.path_sep.
       def path_sep
         Cabar.path_sep
       end
+
 
       # Renders a Resolver object,
       # Using the Resolver's current required_components_dependencies.
@@ -32,10 +34,30 @@ module Cabar
         setenv "TOP_LEVEL_COMPONENTS", x.top_level_components.map{ | c | c.name }.join(" ")
         
         setenv "REQUIRED_COMPONENTS", comps.map{ | c | c.name }.join(" ")
+        render comps
+
+        comment nil
+        comment "Cabar General Environment"
+        
+        render x.facets.values
+      end
+      
+
+      def render_Selection x
+        if _options[:selected]
+          render x.to_a
+        else
+          render x.resolver
+        end
+      end
+
+
+      def render_Array_Component comps, opts = EMPTY_HASH
         comps.each do | c |
           comment nil
           comment "Cabar component #{c.name}"
           self.env_var_prefix = "CABAR_#{c.name}_"
+          setenv :NAME, c.name
           setenv :VERSION, c.version
           setenv :DIRECTORY, c.directory
           setenv :BASE_DIRECTORY, c.base_directory
@@ -47,24 +69,25 @@ module Cabar
           c.configuration.each do | k, v |
             comment "config #{k.to_s.inspect}"
             setenv "CONFIG_#{k}", "#{v}"
-          end
-          
+          end          
         end
-        
+      end
+
+
+      def render_Array_Facet facets, opts = EMPTY_HASH
         self.env_var_prefix = ''
-        comment nil
-        comment "Cabar General Environment"
-       
+        
         #render application level env_vars 
         x.configuration.application_env_vars.each_pair{|k,v|setenv(k,v)}
         #render facet level env_vars 
-        x.facets.values.each do | facet |
+        facets.each do | facet |      
           comment nil
           comment "facet #{facet.key.inspect} owner #{facet.owner}"
           facet.render self
         end
       end
-      
+
+
       # Low-level rendering.
       
       # Renders a comment if verbose.
@@ -82,6 +105,7 @@ module Cabar
       def normalize_env_name name
         name = name.to_s.gsub(/[^A-Z0-9_]/i, '_')
       end
+
 
       # Render a basic environment variable set.
       def setenv name, val

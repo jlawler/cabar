@@ -5,15 +5,33 @@ Cabar::Plugin.new :name => 'cabar/env', :documentation => 'Environment variable 
   facet :env,     :class => Cabar::Facet::EnvVarGroup
   facet :env_var, :class => Cabar::Facet::EnvVar
 
-  doc "
+  doc "[ --verbose, --selected, --ruby, --shell ]
 Lists the environment variables for required components
 as a sourceable /bin/sh script.
+
+Options:
+  --verbose
+  --selected - renders only the selected objects
+  --ruby     - renders result as a Ruby script on ENV.
+  --shell    - renders result as a /bin/sh script.
+
+Examples
+  cbr env - cabar 
+  cbr env - cabar --selected
+  cbr env --selected -T
+  cbr env - cabar --ruby
 "
   cmd :env do
     selection.select_required = true
     selection.to_a
     
-    r = Cabar::Renderer::ShellScript.new cmd_opts
+    case 
+    when cmd_opts[:ruby]
+      r = Cabar::Renderer::RubyScript
+    else
+      r = Cabar::Renderer::ShellScript
+    end
+    r = r.new cmd_opts
     
     selection.resolver.render r
   end # cmd

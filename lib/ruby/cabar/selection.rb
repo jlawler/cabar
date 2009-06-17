@@ -167,15 +167,15 @@ module Cabar
 
           when @select_available
             result = resolver.available_components
-            _logger.debug "result #{result.class} #{result.to_a.size}"
+            _logger.debug { "result #{result.class} #{result.to_a.size}" }
 
             if component_constraint
               result = result.select(component_constraint)
-              _logger.debug "result #{result.class} #{result.to_a.size}"
+              _logger.debug { "result #{result.class} #{result.to_a.size}" }
             end
 
             result = result.to_a
-            _logger.debug "result #{result.class} #{result.to_a.size}"
+            _logger.debug { "result #{result.class} #{result.to_a.size}" }
             
             if @select_dependencies
               result = resolver.component_dependencies(result)
@@ -190,6 +190,12 @@ module Cabar
           result
         end
     end
+
+
+    def render r
+      r.render self
+    end
+    
 
     # Delegate other methods to #to_a.
     def method_missing sel, *args, &blk  
