@@ -1,0 +1,93 @@
+#!/usr/bin/ruby
+CONFIG_DIR=ENV['CABAR_CONFIG_DIR'] 
+CONFIG_FILE=ENV['CABAR_CONFIG'] 
+SKIP_CABAR_YML=['cabar_conf.yml']
+USAGE="See current cabar configs - cbrs list
+switch to a different cabar config - cbrs APP
+"
+def current_cabar
+  return nil unless File.exists?(CONFIG_FILE)
+  cabar_hash.each_pair {|pretty_name,path|
+    return "#{pretty_name}" if File.identical?(CONFIG_FILE,path)
+  }
+  return CONFIG_FILE
+end
+
+def list_cabars options={}
+  cabar_hash.keys.sort.each { |pretty_name|
+    print "#{pretty_name}"
+    print ": #{cabar_hash[pretty_name]}" if options[:verbose]
+    print "\n"
+  }
+end
+
+def get_cabar_config_file full, entry=nil
+    if entry 
+      full=full.concat("/#{entry}")
+    else
+      entry=full.split("/").pop
+    end
+    if !SKIP_CABAR_YML.include?(entry) and entry=~/^(.*)_cabar_conf\.yml$/
+      return {$1 => full}
+    end 
+    {}
+end
+
+def get_cabar_config_dir config_dir 
+  ret=Hash.new
+  Dir.open(config_dir).each { |entry|
+    full="#{config_dir}/#{entry}"
+    if File.exists? full
+      if File.directory? full
+        Dir.glob("#{full}/*_cabar_conf.yml"){|sub_dir_full|
+          if File.exists? sub_dir_full and not File.directory? sub_dir_full
+            ret.merge!(get_cabar_config_file(sub_dir_full))
+          end
+        }
+      else
+        ret.merge!(get_cabar_config_file(full))
+      end
+    end
+  }
+  ret
+end
+
+def cabar_hash
+  ret=Hash.new
+  return ret unless CONFIG_DIR
+  CONFIG_DIR.split(/:/).each {|config_dir_entry|
+    ret.merge! get_cabar_config_dir(config_dir_entry)
+  }
+  ret
+end
+def switch_cabars newfile, options={}
+  if File.exists? CONFIG_FILE and File.symlink? CONFIG_FILE
+    File.unlink(CONFIG_FILE)
+  else
+    $stderr.print "Configuration file (\"#{CONFIG_FILE}\") doesn't exist or isn't a symlink! \n"
+  end
+  abort "unknown cabar config file #{newfile}\n" unless newfile 
+  File.symlink(newfile,CONFIG_FILE)
+  puts "successfully change cabar config to #{newfile}\n" 
+end
+def current_cabar_string
+  return "No current cabar\n" unless current_cabar
+  return "Current Config #{current_cabar}\n"
+end
+
+
+abort current_cabar_string.concat(USAGE) unless ARGV.size > 0
+abort("No CABAR_CONFIG defined\n") unless ENV['CABAR_CONFIG']
+options={}
+options[:verbose]=true if ARGV.include?("--verbose")
+if File.exists?(ARGV[0])
+  new_config=File.expand_path(ARGV[0])
+  $stderr.puts new_config
+  switch_cabars(new_config, options)
+else
+if ARGV[0].downcase=="list"
+  list_cabars(options)
+else
+  switch_cabars(cabar_hash[ARGV[0]],options)
+end
+end
