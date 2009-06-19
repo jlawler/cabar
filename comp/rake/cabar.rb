@@ -41,7 +41,10 @@ module Cabar
             x.flatten!
             # $stderr.puts "  arch_dir: x = #{x.inspect}"
           end
-
+          #We need to pass not just a path to the rakefile but a component name
+          #The way I did this is to make the environment variable contain
+          #PATH_TO_COMPONENT!COMPONENT_NAME:
+          #So you will end up with /cabar/comp1/Rakefile!comp1:/cabar/comp2/Rakefile!comp2
           @abs_path = x.map{|p|[p,component.name].join('!')}
         end
       end
