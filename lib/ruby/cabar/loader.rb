@@ -413,7 +413,7 @@ private
       if comp
         comp._options[:enabled] = false
       end
-      raise Error.new("in #{conf_file.inspect}: in #{self.class}", :error => err)
+      raise Error.new("in #{conf_file && conf_file.inspect}: in #{self.class}", :error => err)
     end
     
 
