@@ -33,7 +33,7 @@ Examples
     end
     r = r.new cmd_opts
     
-    selection.resolver.render r
+    selection.render r
   end # cmd
 
 end # plugin
