@@ -1,21 +1,25 @@
 # -*- ruby -*-
 require 'cabar/test/main_helper'
 
-describe 'Cabar env' do
+describe 'cbr env' do
   include Cabar::Test::MainHelper
 
-  it 'should generate correct env' do
-    generated = ''
-    main(:cd => "CABAR_BASE_DIR/example", 
-         :args => 'env', 
-         :env => {
-           :CABAR_PATH   => "repo/dev:repo/prod:repo/plat:@repo/..",
-           :CABAR_CONFIG => "cabar_conf.yml",
-         },
-         :stdout => generated) do
-    end
+  def example_main opts = { }, &blk
+    opts = {
+      :cd => "CABAR_BASE_DIR/example", 
+      :env => {
+        :CABAR_PATH   => "repo/dev:repo/prod:repo/plat:@repo/..",
+        :CABAR_CONFIG => "cabar_conf.yml",
+      },
+    }.merge(opts)
 
-    expected = %q{
+    main(opts, &blk)
+  end
+
+
+  it 'cbr env # no args' do
+    example_main(:args => 'env', 
+                 :match_stdout => <<'EOF')
 CABAR_TOP_LEVEL_COMPONENTS="boc"; export CABAR_TOP_LEVEL_COMPONENTS;
 CABAR_REQUIRED_COMPONENTS="boc todo c1 boc_customer gems c3 c2 boc_locale boc_config rubygems cabar ruby"; export CABAR_REQUIRED_COMPONENTS;
 CABAR_boc_NAME="boc"; export CABAR_boc_NAME;
@@ -76,7 +80,7 @@ CABAR_boc_config_BASE_DIRECTORY="<<CABAR_BASE_DIR>>/example/repo/prod/boc_config
 CABAR_boc_config_RUBYLIB="<<CABAR_BASE_DIR>>/example/repo/prod/boc_config/1.0/lib"; export CABAR_boc_config_RUBYLIB;
 CABAR_boc_config_CABAR_RAKE_FILE="<<CABAR_BASE_DIR>>/example/repo/prod/boc_config/1.0/Rakefile!boc_config"; export CABAR_boc_config_CABAR_RAKE_FILE;
 CABAR_rubygems_NAME="rubygems"; export CABAR_rubygems_NAME;
-CABAR_rubygems_VERSION="1.2.0"; export CABAR_rubygems_VERSION;
+CABAR_rubygems_VERSION="<<ANY>>"; export CABAR_rubygems_VERSION;
 CABAR_rubygems_DIRECTORY="<<CABAR_BASE_DIR>>/comp/rubygems"; export CABAR_rubygems_DIRECTORY;
 CABAR_rubygems_BASE_DIRECTORY="<<CABAR_BASE_DIR>>/comp/rubygems"; export CABAR_rubygems_BASE_DIRECTORY;
 CABAR_cabar_NAME="cabar"; export CABAR_cabar_NAME;
@@ -87,7 +91,7 @@ CABAR_cabar_RUBYLIB="<<CABAR_BASE_DIR>>/lib/ruby"; export CABAR_cabar_RUBYLIB;
 CABAR_cabar_PATH="<<CABAR_BASE_DIR>>/bin"; export CABAR_cabar_PATH;
 CABAR_cabar_CABAR_RAKE_FILE="<<CABAR_BASE_DIR>>/Rakefile!cabar"; export CABAR_cabar_CABAR_RAKE_FILE;
 CABAR_ruby_NAME="ruby"; export CABAR_ruby_NAME;
-CABAR_ruby_VERSION="1.8.7.72"; export CABAR_ruby_VERSION;
+CABAR_ruby_VERSION="<<ANY>>"; export CABAR_ruby_VERSION;
 CABAR_ruby_DIRECTORY="<<CABAR_BASE_DIR>>/comp/ruby/std"; export CABAR_ruby_DIRECTORY;
 CABAR_ruby_BASE_DIRECTORY="/usr"; export CABAR_ruby_BASE_DIRECTORY;
 CABAR_ruby_RUBYLIB="<<CABAR_BASE_DIR>>/lib/ruby:<<ANY>>:."; export CABAR_ruby_RUBYLIB;
@@ -116,21 +120,24 @@ CABAR_ENV_TEST2="test2"; export CABAR_ENV_TEST2;
 TEST2="test2"; export TEST2;
 unset CABAR_ENV_TEST3;
 unset TEST3;
-}
-
-    expected = expected.gsub('<<CABAR_BASE_DIR>>', Cabar::CABAR_BASE_DIR)
-    expected = expected.split("\n")
-    expected.shift # remove leading newline.
-    generated = generated.split("\n")
-    expected.zip(generated).each do | (e, g) |
-      e = Regexp.escape(e)
-      e = e.gsub('<<ANY>>', '.*')
-      e = /^#{e}$/
-      if false
-        $stderr.puts "expected = #{e.inspect}"
-        $stderr.puts "generate = #{g.inspect}"
-      end
-      g.should match(e)
-    end
+EOF
   end
+
+
+  it 'cbr env - boc -T --selected' do
+    example_main(:args => 'env - boc -T --selected',
+                 :match_stdout => <<'EOF')
+CABAR_ENV_SELECTED_COMPONENTS="boc"; export CABAR_ENV_SELECTED_COMPONENTS;
+SELECTED_COMPONENTS="boc"; export SELECTED_COMPONENTS;
+CABAR_boc_NAME="boc"; export CABAR_boc_NAME;
+CABAR_boc_VERSION="1.1"; export CABAR_boc_VERSION;
+CABAR_boc_DIRECTORY="<<CABAR_BASE_DIR>>/example/repo/dev/boc"; export CABAR_boc_DIRECTORY;
+CABAR_boc_BASE_DIRECTORY="<<CABAR_BASE_DIR>>/example/repo/dev/boc"; export CABAR_boc_BASE_DIRECTORY;
+CABAR_boc_PATH="<<CABAR_BASE_DIR>>/example/repo/dev/boc/bin"; export CABAR_boc_PATH;
+CABAR_boc_CABAR_RAKE_FILE="<<CABAR_BASE_DIR>>/example/repo/dev/boc/Rakefile!boc"; export CABAR_boc_CABAR_RAKE_FILE;
+CABAR_boc_TEST1="test1"; export CABAR_boc_TEST1;
+CABAR_boc_TEST2="test2"; export CABAR_boc_TEST2;
+unset CABAR_boc_TEST3;
+EOF
+    end
 end
