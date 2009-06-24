@@ -72,7 +72,15 @@ module Cabar
 
     # A list of all Facets in the Component.
     attr_reader :facets
-    
+    def facets
+      @facets||=[]
+      def @facets.method_missing(*args)
+        super unless args.size==1
+        key=args.first.to_s.chomp('s')
+        self.select{|f|f.key.to_sym==key.to_sym}
+      end
+      @facets
+    end  
     # All the provides Facets.
     attr_reader :provides
     
