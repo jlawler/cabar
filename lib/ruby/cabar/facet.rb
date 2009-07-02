@@ -164,6 +164,10 @@ module Cabar
         return nil unless proto.configure_early?
       else
         unless proto
+          #If you want to not explode on unknown facets
+          #return instead of raise here.
+          #FIXME make a config option so you can specify
+          # "Don't blow up on unknown facets"
           raise Error, "unknown Facet #{proto_name.inspect}"
         end
         return nil if proto.configure_early?
