@@ -33,6 +33,12 @@ module Derby
       until args.empty?
         arg = args.shift
         case arg
+        when /^--?u$/
+          options[:preserve_user] = true
+        when /^--?g$/
+          options[:preserve_group] = true
+        when /^--?p$/
+          options[:preserve_perms] = true
         when /^--?D([^=]+)=(.*)$/
           define! $1, $2
         when /^--?D$/
@@ -57,7 +63,7 @@ module Derby
 
     def run!
       parse_args!
-      @errors ? 1 : 0
+      @errors.empty? ? 0 : 1
     end
 
 
@@ -84,14 +90,19 @@ module Derby
 
     def processor
       @processor ||=
-        DerbyProcessor.new(:defines => defines, :verbose => verbose)
+        MainProcessor.new(
+                           options.merge(
+                                         :defines => defines, 
+                                         :verbose => verbose
+                                         ))
     end
 
 
     # Main processor generates new files.
-    class DerbyProcessor < Processor::Generic
+    class MainProcessor < Processor::Generic
       attr_accessor :preserve_user, :preserve_group, :preserve_mode
       attr_accessor :defines
+
       
       def pre_initialize
         @preserve_user = true
@@ -100,23 +111,54 @@ module Derby
         super
       end
 
+
       def post_initialize
         # pp @defines
       end
 
+      
       def process_file! file
-        result = process_erb! file[:src_path]
-        FileUtils.mkdir_p File.dirname(file[:dst_path])
-        File.open(file[:dst_path], "w+") do | fh |
-          $stderr.puts "#{File.basename($0)}: generating #{file[:dst_path].inspect}" if @verbose > 0
-          fh.write(result)
+        $stderr.write "process_file:\n  "
+        pp file
+
+        src_path, dst_path = file[:src_path], file[:dst_path]
+
+        FileUtils.mkdir_p(File.dirname(dst_path))
+        File.unlink(dst_path) rescue nil
+
+        case type = file[:pattern][:type]
+        when :directory
+          return
+
+        when :symlink
+          File.symlink(file[:linkname], dst_path)
+
+        when :erb
+          result = process_erb! src_path
+          
+          File.open(dst_path, "w+") do | fh |
+            $stderr.puts "#{File.basename($0)}: generating #{dst_path.inspect}" if @verbose > 0
+            fh.write(result)
+          end
+
+        else
+          FileUtils.cp(src_path, dst_path)
+        end
+      
+        unless type == :symlink
+          src_stat = file[:src_stat]
+          File.chown(src_stat.uid, nil, dst_path)  if @preserve_user && Process.euid == 0
+          File.chown(nil, src_stat.gid, dst_path)  if @preserve_group
+          File.chmod(src_stat.mode, dst_path) if @preserve_mode
         end
       end
  
+
       def get_binding derby
         derby = derby
         binding
       end
+
 
       def method_missing sel, *args, &blk
         # $stderr.puts "  method_missing #{sel.inspect}, #{args.inspect}: caller #{caller[0]}"

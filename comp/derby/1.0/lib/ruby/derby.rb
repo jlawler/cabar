@@ -1,4 +1,3 @@
-$: << File.expand_path(File.dirname(__FILE__) + '/../../../../../lib/ruby')
 
 module Derby
   EMPTY_ARRAY = [ ].freeze unless defined? EMPTY_ARRAY
@@ -11,19 +10,25 @@ module Derby
   #     attr_accessor :foo, :bar
   #   end
   #
-  #   Foo.new(:foo => 'foo')
+  #   obj = Foo.new(:foo => 'foo', :baz => 'baz')
+  #   obj.foo => 'foo'
+  #   obj.bar => 'nil'
+  #   obj.options => { :baz => 'baz' }
   #
   module InitializeFromHash
+    def options
+      @options
+    end
+
     def initialize opts = nil
       opts ||= EMPTY_HASH
-      @options = { }
+      @options = opts.dup
       pre_initialize if respond_to?(:pre_initialize)
       opts.each do | k, v |
         s = :"#{k}="
         if respond_to?(s)
           send(s, v) 
-        else
-          @options[k] = v
+          @options.delete(k)
         end
       end
       post_initialize if respond_to?(:post_initialize)
@@ -43,4 +48,17 @@ module Derby
   end # module
 
 end # module
+
+
+# Use to add comp/... directories to search path when its too early for
+# cabar to require itself.
+def cabar_comp_require name, version = nil
+  path = File.expand_path(File.dirname(__FILE__) + "../../../../../../comp/#{name}/#{version}/lib/ruby")
+  $:.insert(0, path) unless $:.include?(path)
+  # $stderr.puts "#{$:.inspect} #{path.inspect}"
+  require name
+end
+
+
+cabar_comp_require 'cabar_core'
 

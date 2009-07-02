@@ -8,6 +8,7 @@ require 'pp'
 
 
 module Derby
+  # Base class for processing ERb source files.
   class Processor
     include InitializeFromHash
 
@@ -131,8 +132,6 @@ module Derby
     end
 
 
-
-
     class Generic < self
     end
 
@@ -147,7 +146,7 @@ module Derby
         @result ||= { }
       end
 
-      def process_file! file, data
+      def process_data! file, data
         @result.cabar_merge!(YAML::load(data))
       end
 
