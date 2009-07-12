@@ -1,5 +1,6 @@
+
+Cabar::Plugin.new do
 module Cabar
-  unless defined?(Facet::Rakefile)
     class Facet::Rakefile < Facet::Path
       attr_accessor :rakefiles
 
@@ -20,6 +21,17 @@ module Cabar
       # Jer: THIS APPEARS TO BE REDUNDANT/COPY N PASTE CODE
       # please explain why the standard #abs_path method was insufficent?
       # -- kurt 2009/06/16
+      # Kurt:  THIS IS COPY AND PASTE CODE.  EXCEPT FOR THE LAST LINE.
+      # give the fact that we don't have an easy way to pass a more
+      # complicated data structure through env vars, I implemented a 
+      # rudimentry (read: ghetto) system for passing key-value pairs.
+      # Admittedly, I copied and pasted this code, except for the last line.
+      # I saw no easy way to reuse the majority of the code without
+      # a significant investment of refactoring time.  This seemed bad
+      # because I was guessing there would be other cases we needed
+      # to pass key-value pairs around and we would end up standardizing
+      # that.
+      # -- jwl 2009/07/13
       def abs_path
         @abs_path ||=
         owner &&
@@ -48,11 +60,9 @@ module Cabar
           @abs_path = x.map{|p|[p,component.name].join('!')}
         end
       end
-    end
   end
 end
 
-Cabar::Plugin.new do
   facet :rakefile, 
       :env_var => :CABAR_RAKE_FILE,
       :std_path => :Rakefile,
