@@ -38,7 +38,7 @@ module Cabar
       @component_search_path_pending = [ ]
       @component_directories = [ ]
       @component_directories_pending = [ ]
-      @component_parse_pending = [ ]
+      @component_configure_pending = [ ]
       super
 
       raise TypeError, "main is not defined" unless Main === main
@@ -108,50 +108,68 @@ module Cabar
     # may add component search paths during
     # loading, to implement recursive component repositories.
     #
+    # cabar/plugin/core.rb is loaded here to support the "components" Facet for comp/ directories.
     def load_components!
       _logger.debug :"load_components!"
 
+      plugin_manager.load_plugin! "#{Cabar.cabar_base_directory}/lib/ruby/cabar/plugin/core.rb"
+
       notify_observers(:before_load_components!)
 
-      path = nil
-      dir = nil
+      _scan_pending_directories!
 
-      # While there are still component paths to search.
-      @component_search_path_pending.cabar_each! do | path |
-        _logger.debug do
-          "search path #{path.inspect}"
-        end
-        @component_search_path << path
-        
-        search_for_component_directories(path).each do | dir |
-          add_component_directory! dir
-        end
-
-        # While there are still components to load.
-        @component_directories_pending.cabar_each! do | dir |
-          @component_directories << dir
-          _logger.debug do
-            "component dir #{dir.inspect}"
-          end
-
-          parse_component! dir
-        end
-
-      end
+      # Load each most recent component's plugins.
+      load_most_recent_plugins!
 
       # Now that all components (and any plugins have been loaded),
       # the components can be fully configured.
-      @component_parse_pending.cabar_each! do | c |
-        c.parse_configuration!
+      @component_configure_pending.cabar_each! do | c |
+        c.configure!
         _logger.debug do
-          "component #{c.inspect}"
+          "configure component #{c.inspect}"
         end
       end
-      
 
       notify_observers(:after_load_components!)
 
       self
+    end
+
+
+    def _scan_pending_directories!
+      path = nil
+      dir = nil
+
+      _logger.debug do 
+        "_scan_pending_directories!"
+      end
+
+      # While there are still component paths to search,
+      @component_search_path_pending.cabar_each! do | path |
+        _logger.debug do
+          "  search path #{path.inspect}"
+        end
+        @component_search_path << path
+        
+        search_for_component_directories!(path).each do | dir |
+          add_component_directory! dir
+        end
+
+        # While there are still components to load,
+        @component_directories_pending.cabar_each! do | dir |
+          @component_directories << dir
+          _logger.debug do
+            "  component dir #{dir.inspect}"
+          end
+
+          # Create each component.
+          _load_component! dir
+        end
+      end
+
+      _logger.debug do 
+        "_scan_pending_directories!: DONE"
+      end
 
     rescue Exception => err
       raise Error.new('Loading components', 
@@ -159,13 +177,14 @@ module Cabar
                       :directory => dir, 
                       :pending_paths => @component_search_path_pending,
                       :pending_directories => @component_directories_pending)
+
     end
 
 
     # Returns a list of all component directories.
-    def search_for_component_directories *path
+    def search_for_component_directories! *path
       _logger.debug do
-        "search_for_component_directories #{path.inspect}"
+        "search_for_component_directories! #{path.inspect}"
       end
 
       # Find all */*/cabar.yml or */cabar.yml files.
@@ -193,7 +212,7 @@ module Cabar
       x = x.cabar_uniq_return!
 
       _logger.debug do
-        "result #{x.inspect}"
+        "search_for_component_directories! #{path.inspect} => #{x.inspect}"
       end
 
       x
@@ -206,9 +225,11 @@ module Cabar
     # Returns a set of all available Components
     # found through the component_directories search path.
     #
+    # The most recent component's plugins are loaded.
     def available_components
       unless @available_components
         @available_components = Cabar::Version::Set.new
+
         load_components!
       end
 
@@ -220,18 +241,9 @@ module Cabar
     def add_available_component! c
       unless @available_components.include?(c)
         @available_components << c
-        @component_parse_pending << c
+        @component_configure_pending << c
         notify_observers(:available_component_added!, c)
       end
-    end
-
-
-    # Helper method to create a Component.
-    def create_component opts
-      opts[:_loader] = self
-      c = Component.factory.new opts
-      # c.resolver = self.resolver # YUCK! components know about Resolvers.
-      c
     end
 
 
@@ -242,7 +254,15 @@ module Cabar
 
 private
 
-    def parse_component_config directory, conf_file = nil
+    # Helper method to create a Component.
+    def create_component opts
+      opts[:_loader] = self
+      c = Component.factory.new opts
+      c
+    end
+
+
+    def _parse_component_config directory, conf_file = nil
       raise TypeError, "main is not defined" unless Main === main
 
       conf_file ||= 
@@ -291,38 +311,6 @@ private
         comps = { name => comps }
       end
       
-      # Handle plugins.
-      # Use component name as the default Plugin name.
-      if plugin = conf['plugin']
-        begin
-          plugin = [ plugin ] unless Array === plugin
-
-          save_name = Cabar::Plugin.default_name = name
-
-          # Observe when plugins are installed.
-          main.plugin_manager.add_observer(self, :plugin_installed, :plugin_installed!)
-
-          plugin.each do | file |
-            next unless file
-
-            file = Cabar.path_expand(file, directory)
-
-            _logger.debug do
-              "    loading plugin #{file.inspect}"
-            end
-
-            require file
-
-            _logger.debug do
-              "    loading plugin #{file.inspect}: DONE"
-            end
-          end
-        ensure
-          Cabar::Plugin.default_name = save_name
-          main.plugin_manager.delete_observer(self, :plugin_installed)
-        end
-      end
-
       _logger.info do
         "    loading #{conf_file.inspect}: DONE"
       end
@@ -331,23 +319,118 @@ private
     end
 
 
-    # Observer callback for newly installed plugins.
+    # Returns the cabar Component with the greatest version.
+    def cabar_component
+      @cabar_component ||=
+        available_components['cabar'].first || 
+        (raise Error, "Cannot find cabar component.")
+    end
+
+
+    # Loads the plugins from the most recent version of each component.
+    def load_most_recent_plugins!
+      _logger.info do
+        "loading plugins"
+      end
+
+      notify_observers(:before_load_plugins!)
+
+      plugin_manager.load_plugin! "#{Cabar.cabar_base_directory}/lib/ruby/cabar/plugin/cabar.rb"
+
+      available_components.most_recent.each do | comp |
+        load_plugin_for_component! comp
+      end
+
+      # Associate all core or orphaned Plugins with Cabar itself.
+      associate_orphaned_plugins! cabar_component
+
+      notify_observers(:after_load_plugins!)
+
+      _logger.info do
+        "loading plugins: DONE"
+      end
+
+      self
+    end
+
+
+   def load_plugin_for_component! comp
+      return if comp.plugins_status
+
+      notify_observers(:before_load_plugin_for_component!, comp)
+
+      default_component_save = Cabar::Plugin.default_component
+      Cabar::Plugin.default_component = comp
+
+      @component = comp
+      @plugins = [ ]
+      comp.plugins_status = :loading
+
+      load_plugins! comp._config['plugin'], comp.name, comp.directory
+
+      comp.plugins = @plugins
+      comp.plugins_status = :loaded
+      
+      notify_observers(:after_load_plugin_for_component!, comp)
+    ensure
+      @component = @plugins = nil
+      Cabar::Plugin.default_component = default_component_save
+    end
+
+
+    # Loads a component's plugins.
+    # Use component name as the default Plugin name.
+    def load_plugins! plugin, name, directory
+      return unless plugin
+
+      plugin = [ plugin ] unless Array === plugin
+      
+      default_name_save = Cabar::Plugin.default_name = name
+     
+      # Observe when plugins are installed.
+      plugin_manager.add_observer(self, :plugin_installed, :plugin_installed!)
+      
+      plugin.each do | file |
+        next unless file
+        
+        file = Cabar.path_expand(file, directory)
+        
+        plugin_manager.load_plugin! file
+      end
+    ensure
+      Cabar::Plugin.default_name = default_name_save
+
+      plugin_manager.delete_observer(self, :plugin_installed)
+    end
+
+
+    def plugin_manager
+      main.plugin_manager
+    end
+
+
+    # Observer callback for associating Plugins with Components.
     def plugin_installed! plugin_manager, plugin
       _logger.debug do
         "      plugin installed #{plugin.name.inspect} #{plugin.file.inspect}"
       end
-      (@plugins ||= [ ]) << plugin
+      @plugins << plugin
     end
 
 
-    def parse_component! directory, conf_file = nil
+    def associate_orphaned_plugins! comp
+      raise TypeError, "expected Component, given #{comp.class}" unless Component === comp
+      plugin_manager.plugins.each do | p |
+        p.component ||= comp
+      end
+    end
+
+
+    def _load_component! directory, conf_file = nil
       # The component.
       comp = nil
 
-      # List of plugins loaded.
-      @plugins = [ ]
-
-      conf, comps, conf_file = parse_component_config directory, conf_file
+      conf, comps, conf_file = _parse_component_config directory, conf_file
 
       return nil unless conf
 
@@ -371,7 +454,6 @@ private
         opts['directory'] ||= directory
         # opts['enabled'] = conf['enabled']
         opts[:_config_file] = conf_file
-        opts[:plugins] = @plugins
         # puts "comp opts #{name.inspect} => "; pp opts
         opts[:_loader] = self
         # opts[:resolver] = self # HUH: is this right?
@@ -389,12 +471,13 @@ private
         comp._config = conf
 
         # Register component, if it's enabled.
+        # Do early configuration (i.e.:  handle "components" Facet comp/ directories).
         if comp.enabled?
           _logger.debug do
             "      enabled #{conf_file.inspect}"
           end
 
-          comp.parse_configuration_early!
+          comp.configure_early!
 
           add_available_component! comp
         else
